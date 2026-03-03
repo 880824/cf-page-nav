@@ -7,7 +7,6 @@
     <link rel="preconnect" href="https://favicon.im" crossorigin>
     <link rel="preconnect" href="https://icons.duckduckgo.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
@@ -71,13 +70,19 @@
         #toast.show { display: block; animation: popIn 0.3s ease-out forwards; }
         @keyframes popIn { 0% { opacity: 0; transform: translate(-50%, -60%); } 100% { opacity: 1; transform: translate(-50%, -50%); } }
 
+        /* 【优化】全局 Loading 动画样式 */
+        #global-loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(5px); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity 0.3s; }
+        .spinner { width: 45px; height: 45px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         .footer-info { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.6); font-size: 12px; pointer-events: none; }
-        
         .cat-item-row.sortable-ghost { background: var(--primary) !important; opacity: 0.5; }
         .drag-handle { cursor: grab; color: #666; margin-right: 5px; font-size: 18px; }
     </style>
 </head>
 <body>
+    <div id="global-loader"><div class="spinner"></div><div id="loader-text">数据加载中...</div></div>
+    
     <div id="toast">保存成功！</div>
     <div class="container">
         <div class="tab-container"><div id="tabs" class="tabs"></div><div id="cat-manage-area"></div></div>
@@ -111,6 +116,29 @@
         let sysToken = localStorage.getItem('nav_token') || '';
         let isAdmin = false;
 
+        // 【优化】Loading 控制器
+        window.showLoader = function(msg = "加载中...") {
+            const loader = document.getElementById('global-loader');
+            document.getElementById('loader-text').innerText = msg;
+            loader.style.display = 'flex';
+            // setTimeout 保证 display: flex 渲染后再加透明度过渡
+            setTimeout(() => loader.style.opacity = '1', 10);
+        };
+        window.hideLoader = function() {
+            const loader = document.getElementById('global-loader');
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.display = 'none', 300);
+        };
+
+        // 【优化】通用防抖函数工具
+        window.debounce = function(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        };
+
         window.escapeHTML = function(str) {
             if (!str && str !== 0) return '';
             return String(str).replace(/[&<>'"]/g, function(tag) {
@@ -122,6 +150,8 @@
         async function init() {
             let fetchUrl = '/api/config';
             const gridContainer = document.getElementById('grid-container');
+            
+            window.showLoader("正在连接服务器..."); // 显示加载动画
             
             try {
                 const res = await fetch(fetchUrl, {
@@ -135,13 +165,12 @@
                         sysToken = '';
                         isAdmin = false;
                     }
-                    
                     let errorMsg = `HTTP Error ${res.status}`;
                     try {
                         const errData = await res.json();
                         errorMsg = errData.message || errData.error || errorMsg;
                     } catch(parseErr) {
-                        if (res.status === 404) errorMsg = "找不到后端 API (/api/config)，请检查 GitHub 仓库的 functions 目录结构是否正确。";
+                        if (res.status === 404) errorMsg = "找不到后端 API (/api/config)，请检查代码部署是否正确。";
                     }
                     throw new Error(errorMsg);
                 }
@@ -150,7 +179,6 @@
                 isAdmin = appData.isAdmin || false;
 
                 if (appData.bgUrl) document.body.style.backgroundImage = `url('${appData.bgUrl}')`;
-                
                 if(!appData.settings) appData.settings = { cardWidth: 160 };
                 document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px');
 
@@ -166,6 +194,8 @@
                     <p style="color:#ccc; line-height:1.6;">${window.escapeHTML(e.message)}</p>
                     <button onclick="location.reload()" style="margin-top:15px; padding:8px 15px; background:#e74c3c; border:none; color:white; border-radius:5px; cursor:pointer;">刷新重试</button>
                 </div>`;
+            } finally {
+                window.hideLoader(); // 关闭加载动画
             }
         }
 
@@ -240,7 +270,6 @@
                     
                     const safeIcon = window.escapeHTML(item.icon);
                     const iconHtml = (item.icon && item.icon.startsWith('http')) ? `<img src="${safeIcon}" loading="lazy" ${fallbackAttr}>` : `<span class="emoji-icon">${safeIcon || '🔗'}</span>`;
-                    
                     const safeUrl = window.escapeHTML(item.url);
                     const safeTitle = window.escapeHTML(item.title);
 
@@ -256,15 +285,13 @@
                     grid.appendChild(addCard);
 
                     new Sortable(grid, {
-                        animation: 150, 
-                        ghostClass: 'sortable-ghost', 
-                        filter: '.dashed', 
+                        animation: 150, ghostClass: 'sortable-ghost', filter: '.dashed', 
                         onEnd: () => {
                             const newIdOrder = Array.from(grid.querySelectorAll('.card[data-id]')).map(el => el.getAttribute('data-id'));
                             const otherCatItems = appData.items.filter(i => i.catId !== cat.id); 
                             const sortedCurrentItems = newIdOrder.map(id => appData.items.find(i => i.id === id)); 
                             appData.items = [...otherCatItems, ...sortedCurrentItems]; 
-                            window.saveAll(true); // 拖拽排序保持静默后台保存即可
+                            window.saveAll(true); 
                         }
                     });
                 }
@@ -272,13 +299,19 @@
             });
         };
 
+        // 【优化】通过 window.debouncedHandleUrlInput 将处理逻辑包裹防抖
+        window.debouncedHandleUrlInput = window.debounce(function(val) {
+            window.handleUrlInput(val);
+        }, 500); // 500ms 后才执行匹配
+
         window.openItemEdit = function(id, catId) {
             window.editingType = 'items'; window.editingId = id; 
             const item = id ? appData.items.find(i => i.id === id) : { id: 'i'+Date.now(), title:'', url:'', icon:'', catId: catId };
             const safeUrl = window.escapeHTML(item.url); const safeTitle = window.escapeHTML(item.title); const safeIcon = window.escapeHTML(item.icon);
             
+            // 注意下面输入框的事件改为了调用 debouncedHandleUrlInput
             document.getElementById('edit-form-body').innerHTML = `
-                <div class="form-row"><label>网站 URL</label><input id="f-url" value="${safeUrl}" oninput="window.handleUrlInput(this.value)"></div>
+                <div class="form-row"><label>网站 URL</label><input id="f-url" value="${safeUrl}" oninput="window.debouncedHandleUrlInput(this.value)"></div>
                 <div class="form-row"><label>网站名称</label><input id="f-title" value="${safeTitle}"></div>
                 <div class="form-row"><label>图标设置</label>
                     <div style="display:flex; width:100%; align-items:center;">
@@ -375,21 +408,18 @@
         window.changeCardWidth = function(val) { 
             appData.settings.cardWidth = parseInt(val) || 160; 
             document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px'); 
-            // 移除这里的 auto-save，避免输入数字时狂刷后端接口，等点确认再保存
         };
         
         window.updateCatData = function(id, field, val) { 
             const cat = appData.categories.find(c => c.id === id); 
             if(cat) cat[field] = val; 
             window.renderNav(); 
-            // 同理，这里只改本地状态，等点下方确认再上传到后端
         };
         
         window.addCat = function() { 
             appData.categories.push({ id: 'c'+Date.now(), name: '新分类', icon: '📁', hidden: false }); 
             window.manageCats(); 
             window.renderNav(); 
-            // 同理
         };
         
         window.confirmEdit = function() {
@@ -400,7 +430,7 @@
             }
             window.renderNav(); 
             window.closeModal(); 
-            window.saveAll(false); // 强制反馈通知 (false = 不要静默)
+            window.saveAll(false); 
         };
 
         window.toggleHide = function(type, id) { const item = appData[type].find(o => o.id === id); if(item) item.hidden = !item.hidden; window.saveAll(false); window.renderNav(); if(type === 'categories') window.manageCats(); };
@@ -408,6 +438,10 @@
         
         window.saveAll = async function(silent = false) {
             const dataToSave = { ...appData }; delete dataToSave.isAdmin; delete dataToSave.bgUrl;
+            
+            // 【优化】保存配置时展示加载状态
+            if(!silent) window.showLoader("正在保存配置...");
+
             try {
                 const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
                 if(res.ok && !silent) { 
@@ -416,9 +450,11 @@
                     toast.classList.add('show'); 
                     setTimeout(() => toast.classList.remove('show'), 2000); 
                 } 
-                else if (!res.ok) { alert('保存失败，可能是Token过期或权限不足'); }
+                else if (!res.ok && !silent) { alert('保存失败，可能是Token过期或权限不足'); }
             } catch (error) {
-                alert('网络连接错误，保存失败');
+                if(!silent) alert('网络连接错误，保存失败');
+            } finally {
+                if(!silent) window.hideLoader(); // 关闭加载动画
             }
         };
 
@@ -433,14 +469,20 @@
 
         window.resetConfig = async function() { 
             if(confirm('⚠️ 警告：这将会清除所有的自定义修改！\n\n确定重置吗？')) {
-                const res = await fetch('/api/config', { method: 'DELETE', headers: { 'Authorization': sysToken } });
-                if(res.ok) { alert('重置成功！'); location.reload(); } else { alert('重置失败。'); }
+                window.showLoader("正在重置...");
+                try {
+                    const res = await fetch('/api/config', { method: 'DELETE', headers: { 'Authorization': sysToken } });
+                    if(res.ok) { alert('重置成功！'); location.reload(); } else { alert('重置失败。'); }
+                } finally {
+                    window.hideLoader();
+                }
             }
         };
         
         window.exportConfig = function() { const dataToExport = { ...appData }; delete dataToExport.isAdmin; delete dataToExport.bgUrl; const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'nav-config.json'; a.click(); };
         window.closeModal = function() { document.getElementById('edit-modal').style.display = 'none'; };
         
+        // 启动应用
         init();
     </script>
 </body>
