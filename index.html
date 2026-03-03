@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>个人导航</title>
+    <title>个人网站导航</title>
     
     <link rel="dns-prefetch" href="https://favicon.im">
     <link rel="preconnect" href="https://favicon.im" crossorigin>
@@ -196,7 +196,6 @@
             };
 
             // ================= 初始化与请求核心 =================
-            // 加入 forceRender 参数，处理登录登出时状态变了但数据本身没变的 UI 刷新问题
             const init = async (forceRender = false) => {
                 let fetchUrl = '/api/config';
                 const gridContainer = document.getElementById('grid-container');
@@ -241,13 +240,11 @@
                     isAdmin = appData.isAdmin || false;
                     localStorage.setItem('nav_app_data', JSON.stringify(appData));
                     
-                    // 【修复核心】单独判断 Admin 状态是否发生了翻转
                     const isAdminChanged = initialIsAdmin !== isAdmin;
 
                     if (appData.bgUrl) loadBackground(appData.bgUrl);
                     if(appData.settings) document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px');
                     
-                    // 只要数据变了、权限变了或者被强制要求刷新，就重绘UI
                     if (forceRender || isDataChanged || isAdminChanged || !localCache) {
                         toggleSkeleton(false);
                         renderTools();
@@ -281,10 +278,13 @@
                     document.title = "管理后台";
                     catManageArea.innerHTML = `<button class="manage-cat-btn" id="btn-manage-cats"><i class="ri-settings-line"></i> 偏好设置</button>`;
                     document.getElementById('btn-manage-cats').addEventListener('click', manageCats);
+                    
+                    // 重新加回了 默认 按钮
                     createFab('登出', '#e74c3c', doLogout);
                     createFab('保存', 'var(--primary)', () => saveAll(false));
                     createFab('导入', null, () => document.getElementById('import-file').click());
                     createFab('导出', null, exportConfig);
+                    createFab('默认', null, resetConfig);
                 } else {
                     document.title = "个人导航";
                     catManageArea.innerHTML = '';
@@ -511,7 +511,6 @@
             const deleteObj = (type, id) => { if(confirm('确定删除？')) { const idx = appData[type].findIndex(o => o.id === id); if(idx > -1) appData[type].splice(idx, 1); renderNav(); if(type === 'categories') manageCats(); saveAll(false); } };
             
             // ================= 接口请求 =================
-            // 加入 forceRender(true) 以强制刷新登录 UI
             const doLogin = async () => { 
                 sysToken = document.getElementById('auth-input').value; 
                 localStorage.setItem('nav_token', sysToken); 
@@ -527,7 +526,6 @@
                 }
             };
 
-            // 登出时直接清空管理数据并强制更新缓存和 UI
             const doLogout = () => { 
                 localStorage.removeItem('nav_token'); 
                 sysToken = ''; 
@@ -540,7 +538,7 @@
             
             const saveAll = async (silent = false) => {
                 const dataToSave = { ...appData }; delete dataToSave.isAdmin; delete dataToSave.bgUrl;
-                localStorage.setItem('nav_app_data', JSON.stringify(appData)); // 同步存入本地缓存
+                localStorage.setItem('nav_app_data', JSON.stringify(appData)); 
                 try {
                     const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
                     if(res.ok && !silent) showToast("保存成功！"); 
@@ -557,14 +555,24 @@
                 }; reader.readAsText(file);
             };
 
+            // 【恢复：配置重置逻辑】调用后端 DELETE 接口并重载页面
             const resetConfig = async () => { 
-                if(confirm('警告：清除所有的修改！确定？')) {
+                if(confirm('⚠️ 警告：这将会清除所有的自定义修改！\n\n确定重置为初始默认配置吗？')) {
                     try {
                         const res = await fetch('/api/config', { method: 'DELETE', headers: { 'Authorization': sysToken } });
-                        if(res.ok) { localStorage.removeItem('nav_app_data'); alert('重置成功！'); location.reload(); } else { alert('重置失败。'); }
-                    } catch(e){}
+                        if(res.ok) { 
+                            localStorage.removeItem('nav_app_data'); 
+                            alert('重置成功！即将刷新页面'); 
+                            location.reload(); 
+                        } else { 
+                            alert('重置失败。'); 
+                        }
+                    } catch(e) {
+                        alert('网络错误，重置失败');
+                    }
                 }
             };
+            
             const exportConfig = () => { const dataToExport = { ...appData }; delete dataToExport.isAdmin; delete dataToExport.bgUrl; const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'nav-config.json'; a.click(); };
             const closeModal = () => { document.getElementById('edit-modal').style.display = 'none'; };
 
