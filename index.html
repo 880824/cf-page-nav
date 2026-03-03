@@ -102,287 +102,322 @@
             <button class="tab-btn active" style="width:100%; margin-top:10px" onclick="window.confirmEdit()">确认保存修改</button>
         </div>
     </div>
-<script>
-    let appData = { settings: { cardWidth: 160 }, categories: [], items: [] };
-    let activeCatId = '';
-    let sysToken = localStorage.getItem('nav_token') || '';
-    let isAdmin = false;
 
-    window.escapeHTML = function(str) {
-        if (!str && str !== 0) return '';
-        return String(str).replace(/[&<>'"]/g, function(tag) {
-            const charsToReplace = { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-            return charsToReplace[tag] || tag;
-        });
-    };
+    <script>
+        let appData = { settings: { cardWidth: 160 }, categories: [], items: [] };
+        let activeCatId = '';
+        let sysToken = localStorage.getItem('nav_token') || '';
+        let isAdmin = false;
 
-    async function init() {
-        let fetchUrl = '/api/config';
-        const gridContainer = document.getElementById('grid-container');
-        
-        try {
-            const res = await fetch(fetchUrl, {
-                headers: sysToken ? { 'Authorization': sysToken } : {},
-                cache: 'no-store'
+        window.escapeHTML = function(str) {
+            if (!str && str !== 0) return '';
+            return String(str).replace(/[&<>'"]/g, function(tag) {
+                const charsToReplace = { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+                return charsToReplace[tag] || tag;
             });
+        };
+
+        async function init() {
+            let fetchUrl = '/api/config';
+            const gridContainer = document.getElementById('grid-container');
             
-            // 【核心修改】检查 HTTP 状态码并读取后端的 JSON 错误信息
-            if (!res.ok) {
-                if (res.status === 401) {
-                    localStorage.removeItem('nav_token');
-                    sysToken = '';
-                    isAdmin = false;
-                }
-                
-                // 尝试解析后端传来的错误 JSON，如果后端报 404 (没找到 API)，则提示路由问题
-                let errorMsg = `HTTP Error ${res.status}`;
-                try {
-                    const errData = await res.json();
-                    errorMsg = errData.message || errData.error || errorMsg;
-                } catch(parseErr) {
-                    if (res.status === 404) errorMsg = "找不到后端 API (/api/config)，请检查 GitHub 仓库的 functions 目录结构是否正确。";
-                }
-                throw new Error(errorMsg);
-            }
-            
-            appData = await res.json();
-            isAdmin = appData.isAdmin || false;
-
-            if (appData.bgUrl) document.body.style.backgroundImage = `url('${appData.bgUrl}')`;
-            
-            if(!appData.settings) appData.settings = { cardWidth: 160 };
-            document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px');
-
-            renderTools();
-            renderNav();
-            
-            if(appData.lastUpdated) document.getElementById('footer-cache').innerText = '最后同步：' + window.escapeHTML(appData.lastUpdated);
-        } catch(e) {
-            console.error("加载数据失败", e);
-            gridContainer.style.display = 'block';
-            gridContainer.innerHTML = `<div style="margin:50px auto; padding:20px; background:rgba(255,0,0,0.2); border:1px solid red; border-radius:10px; max-width:600px; text-align:left;">
-                <h3 style="color:#ff6b6b; margin-bottom:10px;">⚠️ 数据加载失败</h3>
-                <p style="color:#ccc; line-height:1.6;">${window.escapeHTML(e.message)}</p>
-                <button onclick="location.reload()" style="margin-top:15px; padding:8px 15px; background:#e74c3c; border:none; color:white; border-radius:5px; cursor:pointer;">刷新重试</button>
-            </div>`;
-        }
-    }
-
-    // ========== 下方代码与之前版本完全一致 ========== //
-    window.renderTools = function() {
-        if(isAdmin) {
-            document.title = "管理后台";
-            document.getElementById('admin-tools').innerHTML = `
-                <div class="fab-btn" onclick="window.doLogout()" style="background:#e74c3c; color:white; border:none">登出</div>
-                <div class="fab-btn" onclick="document.getElementById('import-file').click()">导入</div>
-                <div class="fab-btn" onclick="window.exportConfig()">导出</div>
-                <div class="fab-btn" onclick="window.resetConfig()">默认</div>
-                <input type="file" id="import-file" accept=".json" style="display:none" onchange="window.importConfig(event)">
-            `;
-            document.getElementById('cat-manage-area').innerHTML = `<button class="manage-cat-btn" onclick="window.manageCats()"><i class="ri-settings-line"></i> 偏好设置</button>`;
-        } else {
-            document.title = "个人导航";
-            document.getElementById('cat-manage-area').innerHTML = '';
-            document.getElementById('admin-tools').innerHTML = `<div class="fab-btn" onclick="document.getElementById('auth-overlay').style.display='flex'; setTimeout(()=> document.getElementById('auth-input').focus(), 100);">管理</div>`;
-        }
-    };
-
-    window.doLogin = async function() {
-        const inputToken = document.getElementById('auth-input').value;
-        sysToken = inputToken;
-        localStorage.setItem('nav_token', sysToken);
-        document.getElementById('auth-overlay').style.display = 'none';
-        await init(); 
-        if(!isAdmin) alert('Token 验证失败或网络错误');
-    };
-
-    window.doLogout = function() {
-        localStorage.removeItem('nav_token');
-        sysToken = '';
-        isAdmin = false;
-        init();
-    };
-
-    window.renderNav = function() {
-        const tabs = document.getElementById('tabs');
-        const container = document.getElementById('grid-container');
-        tabs.innerHTML = ''; container.innerHTML = '';
-        
-        const cats = isAdmin ? appData.categories : appData.categories.filter(c => !c.hidden);
-        if(cats.length > 0 && !activeCatId) activeCatId = cats[0].id;
-        if(!cats.find(c => c.id === activeCatId) && cats.length > 0) activeCatId = cats[0].id;
-
-        cats.forEach((cat) => {
-            const btn = document.createElement('button');
-            btn.className = 'tab-btn' + (activeCatId === cat.id ? ' active' : '') + (cat.hidden ? ' hidden-item' : '');
-            btn.innerHTML = window.escapeHTML(cat.icon) + ' ' + window.escapeHTML(cat.name);
-            btn.onclick = () => { activeCatId = cat.id; window.renderNav(); }; 
-            tabs.appendChild(btn);
-
-            const grid = document.createElement('div');
-            grid.id = 'grid-' + cat.id;
-            grid.className = 'nav-grid' + (activeCatId === cat.id ? ' active' : '');
-            
-            const catItems = appData.items.filter(i => i.catId === cat.id && (isAdmin || !i.hidden));
-            catItems.forEach((item) => {
-                const card = document.createElement('div');
-                card.className = 'card' + (item.hidden ? ' hidden-item' : '');
-                card.setAttribute('data-id', window.escapeHTML(item.id)); 
-                
-                let fallbackAttr = '';
-                if (item.icon && item.icon.startsWith('http')) {
-                    try {
-                        const domain = new URL(item.url).hostname;
-                        fallbackAttr = `onerror="this.onerror=null; this.src='https://icons.duckduckgo.com/ip3/${domain}.ico';"`;
-                    } catch(e) {}
-                }
-                
-                const safeIcon = window.escapeHTML(item.icon);
-                const iconHtml = (item.icon && item.icon.startsWith('http')) ? `<img src="${safeIcon}" loading="lazy" ${fallbackAttr}>` : `<span class="emoji-icon">${safeIcon || '🔗'}</span>`;
-                
-                const safeUrl = window.escapeHTML(item.url);
-                const safeTitle = window.escapeHTML(item.title);
-
-                card.innerHTML = (isAdmin ? `<div class="admin-actions"><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.toggleHide('items', '${window.escapeHTML(item.id)}')"><i class="ri-eye-${item.hidden?'off-':''}line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.openItemEdit('${window.escapeHTML(item.id)}', null)"><i class="ri-edit-line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.deleteObj('items', '${window.escapeHTML(item.id)}')"><i class="ri-delete-bin-line"></i></button></div>` : '') + `<a href="${safeUrl}" target="_blank"><div class="icon-wrapper">${iconHtml}</div><h3>${safeTitle}</h3></a>`;
-                grid.appendChild(card);
-            });
-
-            if(isAdmin) {
-                const addCard = document.createElement('div');
-                addCard.className = 'card'; addCard.style.borderStyle = 'dashed';
-                addCard.innerHTML = '<a href="javascript:void(0)" onclick="event.preventDefault()"><div class="icon-wrapper"><div class="emoji-icon">➕</div></div><h3>新增</h3></a>';
-                addCard.onclick = (e) => { e.preventDefault(); e.stopPropagation(); window.openItemEdit('', cat.id); };
-                grid.appendChild(addCard);
-
-                new Sortable(grid, {
-                    animation: 150, 
-                    ghostClass: 'sortable-ghost', 
-                    filter: '.dashed', 
-                    onEnd: () => {
-                        const newIdOrder = Array.from(grid.querySelectorAll('.card[data-id]')).map(el => el.getAttribute('data-id'));
-                        const otherCatItems = appData.items.filter(i => i.catId !== cat.id); 
-                        const sortedCurrentItems = newIdOrder.map(id => appData.items.find(i => i.id === id)); 
-                        appData.items = [...otherCatItems, ...sortedCurrentItems]; 
-                        window.saveAll(true); 
-                    }
+            try {
+                const res = await fetch(fetchUrl, {
+                    headers: sysToken ? { 'Authorization': sysToken } : {},
+                    cache: 'no-store'
                 });
+                
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        localStorage.removeItem('nav_token');
+                        sysToken = '';
+                        isAdmin = false;
+                    }
+                    
+                    let errorMsg = `HTTP Error ${res.status}`;
+                    try {
+                        const errData = await res.json();
+                        errorMsg = errData.message || errData.error || errorMsg;
+                    } catch(parseErr) {
+                        if (res.status === 404) errorMsg = "找不到后端 API (/api/config)，请检查 GitHub 仓库的 functions 目录结构是否正确。";
+                    }
+                    throw new Error(errorMsg);
+                }
+                
+                appData = await res.json();
+                isAdmin = appData.isAdmin || false;
+
+                if (appData.bgUrl) document.body.style.backgroundImage = `url('${appData.bgUrl}')`;
+                
+                if(!appData.settings) appData.settings = { cardWidth: 160 };
+                document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px');
+
+                renderTools();
+                renderNav();
+                
+                if(appData.lastUpdated) document.getElementById('footer-cache').innerText = '最后同步：' + window.escapeHTML(appData.lastUpdated);
+            } catch(e) {
+                console.error("加载数据失败", e);
+                gridContainer.style.display = 'block';
+                gridContainer.innerHTML = `<div style="margin:50px auto; padding:20px; background:rgba(255,0,0,0.2); border:1px solid red; border-radius:10px; max-width:600px; text-align:left;">
+                    <h3 style="color:#ff6b6b; margin-bottom:10px;">⚠️ 数据加载失败</h3>
+                    <p style="color:#ccc; line-height:1.6;">${window.escapeHTML(e.message)}</p>
+                    <button onclick="location.reload()" style="margin-top:15px; padding:8px 15px; background:#e74c3c; border:none; color:white; border-radius:5px; cursor:pointer;">刷新重试</button>
+                </div>`;
             }
-            container.appendChild(grid);
-        });
-    };
+        }
 
-    window.openItemEdit = function(id, catId) {
-        window.editingType = 'items'; window.editingId = id; 
-        const item = id ? appData.items.find(i => i.id === id) : { id: 'i'+Date.now(), title:'', url:'', icon:'', catId: catId };
-        const safeUrl = window.escapeHTML(item.url); const safeTitle = window.escapeHTML(item.title); const safeIcon = window.escapeHTML(item.icon);
-        document.getElementById('edit-form-body').innerHTML = `
-            <div class="form-row"><label>网站 URL</label><input id="f-url" value="${safeUrl}" oninput="window.handleUrlInput(this.value)"></div>
-            <div class="form-row"><label>网站名称</label><input id="f-title" value="${safeTitle}"></div>
-            <div class="form-row"><label>图标设置</label>
-                <div style="display:flex; width:100%; align-items:center;">
-                    <input id="f-icon" value="${safeIcon}" oninput="window.updatePreview(this.value)" placeholder="可手动填入，或选择下方智能接口">
-                    <div id="preview-box" class="preview-container"></div>
+        window.renderTools = function() {
+            if(isAdmin) {
+                document.title = "管理后台";
+                document.getElementById('admin-tools').innerHTML = `
+                    <div class="fab-btn" onclick="window.doLogout()" style="background:#e74c3c; color:white; border:none">登出</div>
+                    <div class="fab-btn" onclick="document.getElementById('import-file').click()">导入</div>
+                    <div class="fab-btn" onclick="window.exportConfig()">导出</div>
+                    <div class="fab-btn" onclick="window.resetConfig()">默认</div>
+                    <input type="file" id="import-file" accept=".json" style="display:none" onchange="window.importConfig(event)">
+                `;
+                document.getElementById('cat-manage-area').innerHTML = `<button class="manage-cat-btn" onclick="window.manageCats()"><i class="ri-settings-line"></i> 偏好设置</button>`;
+            } else {
+                document.title = "个人导航";
+                document.getElementById('cat-manage-area').innerHTML = '';
+                document.getElementById('admin-tools').innerHTML = `<div class="fab-btn" onclick="document.getElementById('auth-overlay').style.display='flex'; setTimeout(()=> document.getElementById('auth-input').focus(), 100);">管理</div>`;
+            }
+        };
+
+        window.doLogin = async function() {
+            const inputToken = document.getElementById('auth-input').value;
+            sysToken = inputToken;
+            localStorage.setItem('nav_token', sysToken);
+            document.getElementById('auth-overlay').style.display = 'none';
+            await init(); 
+            if(!isAdmin) alert('Token 验证失败或网络错误');
+        };
+
+        window.doLogout = function() {
+            localStorage.removeItem('nav_token');
+            sysToken = '';
+            isAdmin = false;
+            init();
+        };
+
+        window.renderNav = function() {
+            const tabs = document.getElementById('tabs');
+            const container = document.getElementById('grid-container');
+            tabs.innerHTML = ''; container.innerHTML = '';
+            
+            const cats = isAdmin ? appData.categories : appData.categories.filter(c => !c.hidden);
+            if(cats.length > 0 && !activeCatId) activeCatId = cats[0].id;
+            if(!cats.find(c => c.id === activeCatId) && cats.length > 0) activeCatId = cats[0].id;
+
+            cats.forEach((cat) => {
+                const btn = document.createElement('button');
+                btn.className = 'tab-btn' + (activeCatId === cat.id ? ' active' : '') + (cat.hidden ? ' hidden-item' : '');
+                btn.innerHTML = window.escapeHTML(cat.icon) + ' ' + window.escapeHTML(cat.name);
+                btn.onclick = () => { activeCatId = cat.id; window.renderNav(); }; 
+                tabs.appendChild(btn);
+
+                const grid = document.createElement('div');
+                grid.id = 'grid-' + cat.id;
+                grid.className = 'nav-grid' + (activeCatId === cat.id ? ' active' : '');
+                
+                const catItems = appData.items.filter(i => i.catId === cat.id && (isAdmin || !i.hidden));
+                catItems.forEach((item) => {
+                    const card = document.createElement('div');
+                    card.className = 'card' + (item.hidden ? ' hidden-item' : '');
+                    card.setAttribute('data-id', window.escapeHTML(item.id)); 
+                    
+                    let fallbackAttr = '';
+                    if (item.icon && item.icon.startsWith('http')) {
+                        try {
+                            const domain = new URL(item.url).hostname;
+                            fallbackAttr = `onerror="this.onerror=null; this.src='https://icons.duckduckgo.com/ip3/${domain}.ico';"`;
+                        } catch(e) {}
+                    }
+                    
+                    const safeIcon = window.escapeHTML(item.icon);
+                    const iconHtml = (item.icon && item.icon.startsWith('http')) ? `<img src="${safeIcon}" loading="lazy" ${fallbackAttr}>` : `<span class="emoji-icon">${safeIcon || '🔗'}</span>`;
+                    
+                    const safeUrl = window.escapeHTML(item.url);
+                    const safeTitle = window.escapeHTML(item.title);
+
+                    card.innerHTML = (isAdmin ? `<div class="admin-actions"><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.toggleHide('items', '${window.escapeHTML(item.id)}')"><i class="ri-eye-${item.hidden?'off-':''}line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.openItemEdit('${window.escapeHTML(item.id)}', null)"><i class="ri-edit-line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.deleteObj('items', '${window.escapeHTML(item.id)}')"><i class="ri-delete-bin-line"></i></button></div>` : '') + `<a href="${safeUrl}" target="_blank"><div class="icon-wrapper">${iconHtml}</div><h3>${safeTitle}</h3></a>`;
+                    grid.appendChild(card);
+                });
+
+                if(isAdmin) {
+                    const addCard = document.createElement('div');
+                    addCard.className = 'card'; addCard.style.borderStyle = 'dashed';
+                    addCard.innerHTML = '<a href="javascript:void(0)" onclick="event.preventDefault()"><div class="icon-wrapper"><div class="emoji-icon">➕</div></div><h3>新增</h3></a>';
+                    addCard.onclick = (e) => { e.preventDefault(); e.stopPropagation(); window.openItemEdit('', cat.id); };
+                    grid.appendChild(addCard);
+
+                    new Sortable(grid, {
+                        animation: 150, 
+                        ghostClass: 'sortable-ghost', 
+                        filter: '.dashed', 
+                        onEnd: () => {
+                            const newIdOrder = Array.from(grid.querySelectorAll('.card[data-id]')).map(el => el.getAttribute('data-id'));
+                            const otherCatItems = appData.items.filter(i => i.catId !== cat.id); 
+                            const sortedCurrentItems = newIdOrder.map(id => appData.items.find(i => i.id === id)); 
+                            appData.items = [...otherCatItems, ...sortedCurrentItems]; 
+                            window.saveAll(true); 
+                        }
+                    });
+                }
+                container.appendChild(grid);
+            });
+        };
+
+        window.openItemEdit = function(id, catId) {
+            window.editingType = 'items'; window.editingId = id; 
+            const item = id ? appData.items.find(i => i.id === id) : { id: 'i'+Date.now(), title:'', url:'', icon:'', catId: catId };
+            const safeUrl = window.escapeHTML(item.url); const safeTitle = window.escapeHTML(item.title); const safeIcon = window.escapeHTML(item.icon);
+            
+            document.getElementById('edit-form-body').innerHTML = `
+                <div class="form-row"><label>网站 URL</label><input id="f-url" value="${safeUrl}" oninput="window.handleUrlInput(this.value)"></div>
+                <div class="form-row"><label>网站名称</label><input id="f-title" value="${safeTitle}"></div>
+                <div class="form-row"><label>图标设置</label>
+                    <div style="display:flex; width:100%; align-items:center;">
+                        <input id="f-icon" value="${safeIcon}" oninput="window.updatePreview(this.value)" placeholder="可手动填入，或选择下方智能接口">
+                        <div id="preview-box" class="preview-container"></div>
+                    </div>
                 </div>
-            </div>
-            <div class="form-row"><label style="font-size:12px; font-weight:normal; color:#999;">Favicon</label>
-                <div style="display:flex; align-items:center; width:100%;">
-                    <input type="radio" name="icon_sel" id="opt-fav1" style="width:18px; height:18px; flex-shrink:0; margin:0 10px 0 0; padding:0; cursor:pointer;" onchange="window.selectIcon(document.getElementById('txt-fav1').value)">
-                    <input id="txt-fav1" readonly placeholder="等待填写 URL 自动解析..." style="flex:1; min-width:0; color:#aaa; font-size:13px; cursor:pointer; background:#1a1a1a;" onclick="if(this.value){document.getElementById('opt-fav1').click(); window.selectIcon(this.value)}">
-                    <div class="preview-container" style="background:#1a1a1a;"><img id="img-fav1" src="" loading="lazy"></div>
+                
+                <div class="form-row"><label style="font-size:12px; font-weight:normal; color:#999;">Favicon.im</label>
+                    <div style="display:flex; align-items:center; width:100%;">
+                        <input type="radio" name="icon_sel" id="opt-fav1" style="width:18px; height:18px; flex-shrink:0; margin:0 10px 0 0; padding:0; cursor:pointer;" onchange="window.selectIcon(document.getElementById('txt-fav1').value)">
+                        <input id="txt-fav1" readonly placeholder="等待填写 URL 自动解析..." style="flex:1; min-width:0; color:#aaa; font-size:13px; cursor:pointer; background:#1a1a1a;" onclick="if(this.value){document.getElementById('opt-fav1').click(); window.selectIcon(this.value)}">
+                        <div class="preview-container" style="background:#1a1a1a;"><img id="img-fav1" src="" loading="lazy"></div>
+                    </div>
                 </div>
-            </div>
-            <div class="form-row"><label>归属分类</label><select id="f-cat">${appData.categories.map(c => `<option value="${window.escapeHTML(c.id)}" ${c.id===item.catId?'selected':''}>${window.escapeHTML(c.name)}</option>`).join('')}</select></div>
-        `;
-        window.updatePreview(item.icon); 
-        if(item.url) window.handleUrlInput(item.url, false); 
-        document.getElementById('edit-modal').style.display = 'flex'; 
-    };
+                
+                <div class="form-row"><label style="font-size:12px; font-weight:normal; color:#999;">DuckDuckGo</label>
+                    <div style="display:flex; align-items:center; width:100%;">
+                        <input type="radio" name="icon_sel" id="opt-fav2" style="width:18px; height:18px; flex-shrink:0; margin:0 10px 0 0; padding:0; cursor:pointer;" onchange="window.selectIcon(document.getElementById('txt-fav2').value)">
+                        <input id="txt-fav2" readonly placeholder="等待填写 URL 自动解析..." style="flex:1; min-width:0; color:#aaa; font-size:13px; cursor:pointer; background:#1a1a1a;" onclick="if(this.value){document.getElementById('opt-fav2').click(); window.selectIcon(this.value)}">
+                        <div class="preview-container" style="background:#1a1a1a;"><img id="img-fav2" src="" loading="lazy"></div>
+                    </div>
+                </div>
+                
+                <div class="form-row"><label>归属分类</label><select id="f-cat">${appData.categories.map(c => `<option value="${window.escapeHTML(c.id)}" ${c.id===item.catId?'selected':''}>${window.escapeHTML(c.name)}</option>`).join('')}</select></div>
+            `;
+            window.updatePreview(item.icon); 
+            if(item.url) window.handleUrlInput(item.url, false); 
+            document.getElementById('edit-modal').style.display = 'flex'; 
+        };
 
-    window.selectIcon = function(url) { if (!url) return; document.getElementById('f-icon').value = url; window.updatePreview(url); };
-    window.handleUrlInput = function(url, autoSelect = true) { 
-        if(url && url.startsWith('http')) { 
-            try { 
-                const domain = new URL(url).hostname; 
-                const icon1 = "https://favicon.im/" + domain; 
-                document.getElementById('txt-fav1').value = icon1; document.getElementById('img-fav1').src = icon1;
-                const currentIconVal = document.getElementById('f-icon').value;
-                if(autoSelect && !currentIconVal) { document.getElementById('opt-fav1').checked = true; window.selectIcon(icon1); } 
-                else if (currentIconVal === icon1) { document.getElementById('opt-fav1').checked = true; } 
-                else { document.getElementById('opt-fav1').checked = false; }
-            } catch(e) {} 
-        } else {
-            document.getElementById('txt-fav1').value = ""; document.getElementById('img-fav1').src = ""; document.getElementById('opt-fav1').checked = false;
-        }
-    };
-    
-    window.updatePreview = function(val) { 
-        const box = document.getElementById('preview-box'); 
-        if(!val) { box.innerHTML = '🔗'; return; } 
-        const safeVal = window.escapeHTML(val);
-        if(safeVal.startsWith('http')) {
-            let fallback = '';
-            try { const urlVal = document.getElementById('f-url') ? document.getElementById('f-url').value : ''; const domain = new URL(urlVal).hostname; if(domain) fallback = `onerror="this.onerror=null; this.src='https://icons.duckduckgo.com/ip3/${domain}.ico';"`; } catch(e) {}
-            box.innerHTML = `<img src="${safeVal}" loading="lazy" ${fallback}>`;
-        } else { box.innerHTML = safeVal; }
-    };
+        window.selectIcon = function(url) { 
+            if (!url) return; 
+            document.getElementById('f-icon').value = url; 
+            window.updatePreview(url); 
+        };
 
-    window.manageCats = function() {
-        window.editingType = 'cats'; document.getElementById('edit-title').innerText = '偏好与分类设置';
-        document.getElementById('edit-form-body').innerHTML = `
-            <div class="form-row" style="border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;"><label>网格宽度</label><input type="number" id="setting-width" value="${appData.settings.cardWidth}" oninput="window.changeCardWidth(this.value)"><span style="color:#666; margin-left:10px;">px</span></div>
-            <div id="cat-list-sort" style="max-height: 300px; overflow-y: auto;">
-                ${appData.categories.map((c) => `<div class="cat-item-row" data-id="${window.escapeHTML(c.id)}" style="display:flex; gap:8px; margin-bottom:10px; align-items:center; background:#222; padding:8px; border-radius:10px;"><i class="ri-drag-move-fill drag-handle"></i><input value="${window.escapeHTML(c.icon)}" style="width:40px; text-align:center; padding:5px" onchange="window.updateCatData('${window.escapeHTML(c.id)}', 'icon', this.value)"><input value="${window.escapeHTML(c.name)}" style="flex:1; padding:5px" onchange="window.updateCatData('${window.escapeHTML(c.id)}', 'name', this.value)"><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.toggleHide('categories', '${window.escapeHTML(c.id)}')"><i class="ri-eye-${c.hidden?'off-':''}line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.deleteObj('categories', '${window.escapeHTML(c.id)}')"><i class="ri-delete-bin-line"></i></button></div>`).join('')}
-            </div>
-            <button class="tab-btn active" style="width:100%; margin-top:15px" onclick="window.addCat()">+ 新增分类</button>`;
-        const catSortList = document.getElementById('cat-list-sort');
-        new Sortable(catSortList, { animation: 150, handle: '.drag-handle', ghostClass: 'sortable-ghost', onEnd: () => { const newIdOrder = Array.from(catSortList.querySelectorAll('.cat-item-row')).map(el => el.getAttribute('data-id')); appData.categories = newIdOrder.map(id => appData.categories.find(c => c.id === id)); window.renderNav(); window.saveAll(true); } });
-        document.getElementById('edit-modal').style.display = 'flex';
-    };
+        window.handleUrlInput = function(url, autoSelect = true) { 
+            if(url && url.startsWith('http')) { 
+                try { 
+                    const domain = new URL(url).hostname; 
+                    
+                    // 两个接口地址
+                    const icon1 = "https://favicon.im/" + domain; 
+                    const icon2 = "https://icons.duckduckgo.com/ip3/" + domain + ".ico"; 
+                    
+                    // 填充面板 1
+                    document.getElementById('txt-fav1').value = icon1; 
+                    document.getElementById('img-fav1').src = icon1;
+                    
+                    // 填充面板 2
+                    document.getElementById('txt-fav2').value = icon2; 
+                    document.getElementById('img-fav2').src = icon2;
+                    
+                    const currentIconVal = document.getElementById('f-icon').value;
+                    
+                    // 自动选中逻辑
+                    if(autoSelect && !currentIconVal) { 
+                        document.getElementById('opt-fav1').checked = true; 
+                        window.selectIcon(icon1); 
+                    } 
+                    else if (currentIconVal === icon1) { document.getElementById('opt-fav1').checked = true; } 
+                    else if (currentIconVal === icon2) { document.getElementById('opt-fav2').checked = true; } 
+                    else { 
+                        document.getElementById('opt-fav1').checked = false; 
+                        document.getElementById('opt-fav2').checked = false; 
+                    }
+                } catch(e) {} 
+            } else {
+                // 清空面板
+                document.getElementById('txt-fav1').value = ""; document.getElementById('img-fav1').src = ""; document.getElementById('opt-fav1').checked = false;
+                document.getElementById('txt-fav2').value = ""; document.getElementById('img-fav2').src = ""; document.getElementById('opt-fav2').checked = false;
+            }
+        };
+        
+        window.updatePreview = function(val) { 
+            const box = document.getElementById('preview-box'); 
+            if(!val) { box.innerHTML = '🔗'; return; } 
+            const safeVal = window.escapeHTML(val);
+            if(safeVal.startsWith('http')) {
+                let fallback = '';
+                try { const urlVal = document.getElementById('f-url') ? document.getElementById('f-url').value : ''; const domain = new URL(urlVal).hostname; if(domain) fallback = `onerror="this.onerror=null; this.src='https://icons.duckduckgo.com/ip3/${domain}.ico';"`; } catch(e) {}
+                box.innerHTML = `<img src="${safeVal}" loading="lazy" ${fallback}>`;
+            } else { box.innerHTML = safeVal; }
+        };
 
-    window.changeCardWidth = function(val) { appData.settings.cardWidth = parseInt(val) || 160; document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px'); window.saveAll(true); };
-    window.updateCatData = function(id, field, val) { const cat = appData.categories.find(c => c.id === id); if(cat) cat[field] = val; window.renderNav(); window.saveAll(true); };
-    window.addCat = function() { appData.categories.push({ id: 'c'+Date.now(), name: '新分类', icon: '📁', hidden: false }); window.manageCats(); window.renderNav(); window.saveAll(true); };
-    
-    window.confirmEdit = function() {
-        if(window.editingType === 'items') {
-            const url = document.getElementById('f-url').value; const title = document.getElementById('f-title').value; const icon = document.getElementById('f-icon').value; const catId = document.getElementById('f-cat').value;
-            if(window.editingId) { const idx = appData.items.findIndex(i => i.id === window.editingId); if(idx > -1) appData.items[idx] = { ...appData.items[idx], url, title, icon, catId }; } 
-            else { appData.items.push({ id: 'i'+Date.now(), url, title, icon, catId, hidden: false }); }
-        }
-        window.renderNav(); window.closeModal(); window.saveAll(true); 
-    };
+        window.manageCats = function() {
+            window.editingType = 'cats'; document.getElementById('edit-title').innerText = '偏好与分类设置';
+            document.getElementById('edit-form-body').innerHTML = `
+                <div class="form-row" style="border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;"><label>网格宽度</label><input type="number" id="setting-width" value="${appData.settings.cardWidth}" oninput="window.changeCardWidth(this.value)"><span style="color:#666; margin-left:10px;">px</span></div>
+                <div id="cat-list-sort" style="max-height: 300px; overflow-y: auto;">
+                    ${appData.categories.map((c) => `<div class="cat-item-row" data-id="${window.escapeHTML(c.id)}" style="display:flex; gap:8px; margin-bottom:10px; align-items:center; background:#222; padding:8px; border-radius:10px;"><i class="ri-drag-move-fill drag-handle"></i><input value="${window.escapeHTML(c.icon)}" style="width:40px; text-align:center; padding:5px" onchange="window.updateCatData('${window.escapeHTML(c.id)}', 'icon', this.value)"><input value="${window.escapeHTML(c.name)}" style="flex:1; padding:5px" onchange="window.updateCatData('${window.escapeHTML(c.id)}', 'name', this.value)"><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.toggleHide('categories', '${window.escapeHTML(c.id)}')"><i class="ri-eye-${c.hidden?'off-':''}line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.deleteObj('categories', '${window.escapeHTML(c.id)}')"><i class="ri-delete-bin-line"></i></button></div>`).join('')}
+                </div>
+                <button class="tab-btn active" style="width:100%; margin-top:15px" onclick="window.addCat()">+ 新增分类</button>`;
+            const catSortList = document.getElementById('cat-list-sort');
+            new Sortable(catSortList, { animation: 150, handle: '.drag-handle', ghostClass: 'sortable-ghost', onEnd: () => { const newIdOrder = Array.from(catSortList.querySelectorAll('.cat-item-row')).map(el => el.getAttribute('data-id')); appData.categories = newIdOrder.map(id => appData.categories.find(c => c.id === id)); window.renderNav(); window.saveAll(true); } });
+            document.getElementById('edit-modal').style.display = 'flex';
+        };
 
-    window.toggleHide = function(type, id) { const item = appData[type].find(o => o.id === id); if(item) item.hidden = !item.hidden; window.saveAll(true); window.renderNav(); if(type === 'categories') window.manageCats(); };
-    window.deleteObj = function(type, id) { if(confirm('确定删除？')) { const idx = appData[type].findIndex(o => o.id === id); if(idx > -1) appData[type].splice(idx, 1); window.renderNav(); if(type === 'categories') window.manageCats(); window.saveAll(true); } };
-    
-    window.saveAll = async function(silent = false) {
-        const dataToSave = { ...appData }; delete dataToSave.isAdmin; delete dataToSave.bgUrl;
-        const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
-        if(res.ok && !silent) { const toast = document.getElementById('toast'); toast.innerHTML = '保存成功'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1500); } 
-        else if (!res.ok) { alert('保存失败，可能是权限不足'); }
-    };
+        window.changeCardWidth = function(val) { appData.settings.cardWidth = parseInt(val) || 160; document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px'); window.saveAll(true); };
+        window.updateCatData = function(id, field, val) { const cat = appData.categories.find(c => c.id === id); if(cat) cat[field] = val; window.renderNav(); window.saveAll(true); };
+        window.addCat = function() { appData.categories.push({ id: 'c'+Date.now(), name: '新分类', icon: '📁', hidden: false }); window.manageCats(); window.renderNav(); window.saveAll(true); };
+        
+        window.confirmEdit = function() {
+            if(window.editingType === 'items') {
+                const url = document.getElementById('f-url').value; const title = document.getElementById('f-title').value; const icon = document.getElementById('f-icon').value; const catId = document.getElementById('f-cat').value;
+                if(window.editingId) { const idx = appData.items.findIndex(i => i.id === window.editingId); if(idx > -1) appData.items[idx] = { ...appData.items[idx], url, title, icon, catId }; } 
+                else { appData.items.push({ id: 'i'+Date.now(), url, title, icon, catId, hidden: false }); }
+            }
+            window.renderNav(); window.closeModal(); window.saveAll(true); 
+        };
 
-    window.importConfig = function(event) {
-        const file = event.target.files[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try { const importedData = JSON.parse(e.target.result); if (importedData.categories && importedData.items) { if(confirm('⚠️ 警告：将覆盖当前所有分类和书签！\n\n确定继续？')) { appData = importedData; appData.isAdmin = isAdmin; window.saveAll(false); window.renderNav(); } } else { alert("无效配置！"); } } catch(err) { alert("解析 JSON 失败！"); }
-            event.target.value = '';
-        }; reader.readAsText(file);
-    };
+        window.toggleHide = function(type, id) { const item = appData[type].find(o => o.id === id); if(item) item.hidden = !item.hidden; window.saveAll(true); window.renderNav(); if(type === 'categories') window.manageCats(); };
+        window.deleteObj = function(type, id) { if(confirm('确定删除？')) { const idx = appData[type].findIndex(o => o.id === id); if(idx > -1) appData[type].splice(idx, 1); window.renderNav(); if(type === 'categories') window.manageCats(); window.saveAll(true); } };
+        
+        window.saveAll = async function(silent = false) {
+            const dataToSave = { ...appData }; delete dataToSave.isAdmin; delete dataToSave.bgUrl;
+            const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
+            if(res.ok && !silent) { const toast = document.getElementById('toast'); toast.innerHTML = '保存成功'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1500); } 
+            else if (!res.ok) { alert('保存失败，可能是权限不足'); }
+        };
 
-    window.resetConfig = async function() { 
-        if(confirm('⚠️ 警告：这将会清除所有的自定义修改！\n\n确定重置吗？')) {
-            const res = await fetch('/api/config', { method: 'DELETE', headers: { 'Authorization': sysToken } });
-            if(res.ok) { alert('重置成功！'); location.reload(); } else { alert('重置失败。'); }
-        }
-    };
-    
-    window.exportConfig = function() { const dataToExport = { ...appData }; delete dataToExport.isAdmin; delete dataToExport.bgUrl; const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'nav-config.json'; a.click(); };
-    window.closeModal = function() { document.getElementById('edit-modal').style.display = 'none'; };
-    
-    init();
-</script>
+        window.importConfig = function(event) {
+            const file = event.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try { const importedData = JSON.parse(e.target.result); if (importedData.categories && importedData.items) { if(confirm('⚠️ 警告：将覆盖当前所有分类和书签！\n\n确定继续？')) { appData = importedData; appData.isAdmin = isAdmin; window.saveAll(false); window.renderNav(); } } else { alert("无效配置！"); } } catch(err) { alert("解析 JSON 失败！"); }
+                event.target.value = '';
+            }; reader.readAsText(file);
+        };
+
+        window.resetConfig = async function() { 
+            if(confirm('⚠️ 警告：这将会清除所有的自定义修改！\n\n确定重置吗？')) {
+                const res = await fetch('/api/config', { method: 'DELETE', headers: { 'Authorization': sysToken } });
+                if(res.ok) { alert('重置成功！'); location.reload(); } else { alert('重置失败。'); }
+            }
+        };
+        
+        window.exportConfig = function() { const dataToExport = { ...appData }; delete dataToExport.isAdmin; delete dataToExport.bgUrl; const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'nav-config.json'; a.click(); };
+        window.closeModal = function() { document.getElementById('edit-modal').style.display = 'none'; };
+        
+        init();
+    </script>
 </body>
 </html>
-
