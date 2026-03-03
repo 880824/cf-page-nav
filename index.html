@@ -30,7 +30,7 @@
         }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
         
-        /* 【优化 2】背景平滑淡入效果 */
+        /* 背景平滑淡入效果 */
         body { 
             background-color: #111; 
             background-repeat: no-repeat; 
@@ -84,11 +84,11 @@
         .preview-container { width: 40px; height: 40px; background: #282828; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px; border-radius: 8px; margin-left: 8px; }
         .preview-container img { width: 24px; height: 24px; object-fit: contain; }
         
-        /* 【优化 9】Toast 提示防堆叠，移至底部居中，平滑滑动 */
+        /* Toast 提示防堆叠，移至底部居中，平滑滑动 */
         #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(50px); background: #27ae60; color: white; padding: 12px 30px; border-radius: 30px; border: 1px solid var(--glass-border); z-index: 3000; text-align: center; font-weight: bold; font-size: 14px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); opacity: 0; visibility: hidden; transition: all 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55); pointer-events: none; }
         #toast.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
 
-        /* 【优化 6】骨架屏 Skeleton Screen 动画与样式 */
+        /* 骨架屏 Skeleton Screen 动画与样式 */
         #skeleton-screen { display: none; width: 100%; margin-top: 40px; }
         .skel-tabs { display: flex; justify-content: center; gap: 12px; margin-bottom: 35px; flex-wrap: wrap; }
         .skel-tab { width: 80px; height: 35px; border-radius: 40px; background: rgba(255,255,255,0.05); }
@@ -142,14 +142,14 @@
     </div>
 
     <script>
-        // 【优化 8】注册 PWA Service Worker
+        // 注册 PWA Service Worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW Registration failed:', err));
             });
         }
 
-        // 【优化 5】随机 Emoji 回退库挂载到全局，供 onerror 调用
+        // 随机 Emoji 回退库挂载到全局，供 onerror 调用
         const FALLBACK_EMOJIS = ['🌍', '🌟', '🚀', '💡', '🔥', '✨', '🎈', '🎉', '🍀', '💎', '🧭', '🛸', '🔮', '🧩', '🎨'];
         window.getRandomEmoji = () => FALLBACK_EMOJIS[Math.floor(Math.random() * FALLBACK_EMOJIS.length)];
 
@@ -162,10 +162,11 @@
             let editingId = null;
             let toastTimer = null;
 
-            // 【优化 9】单例防重叠 Toast 提示
-            const showToast = (msg = "操作成功") => {
+            // 单例防重叠 Toast 提示
+            const showToast = (msg = "操作成功", color = "#27ae60") => {
                 const toast = document.getElementById('toast');
                 toast.innerText = msg;
+                toast.style.background = color;
                 toast.classList.add('show');
                 clearTimeout(toastTimer);
                 toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
@@ -186,7 +187,7 @@
                 return String(str).replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
             };
 
-            // 【优化 2】背景图异步平滑加载
+            // 背景图异步平滑加载
             const loadBackground = (url) => {
                 if(!url) return;
                 const img = new Image();
@@ -195,16 +196,20 @@
             };
 
             // ================= 初始化与请求核心 =================
-            const init = async () => {
+            // 加入 forceRender 参数，处理登录登出时状态变了但数据本身没变的 UI 刷新问题
+            const init = async (forceRender = false) => {
                 let fetchUrl = '/api/config';
                 const gridContainer = document.getElementById('grid-container');
                 
-                // 【优化 1】本地缓存优先渲染 (Stale-while-revalidate)
+                // 本地缓存优先渲染 (Stale-while-revalidate)
                 const localCache = localStorage.getItem('nav_app_data');
+                let initialIsAdmin = isAdmin; // 记录请求前的鉴权状态
+                
                 if (localCache) {
                     try {
                         appData = JSON.parse(localCache);
                         isAdmin = appData.isAdmin || false;
+                        initialIsAdmin = isAdmin;
                         if (appData.settings) document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px');
                         toggleSkeleton(false);
                         renderTools();
@@ -235,11 +240,15 @@
                     appData = newData;
                     isAdmin = appData.isAdmin || false;
                     localStorage.setItem('nav_app_data', JSON.stringify(appData));
+                    
+                    // 【修复核心】单独判断 Admin 状态是否发生了翻转
+                    const isAdminChanged = initialIsAdmin !== isAdmin;
 
                     if (appData.bgUrl) loadBackground(appData.bgUrl);
                     if(appData.settings) document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px');
                     
-                    if (isDataChanged || !localCache) {
+                    // 只要数据变了、权限变了或者被强制要求刷新，就重绘UI
+                    if (forceRender || isDataChanged || isAdminChanged || !localCache) {
                         toggleSkeleton(false);
                         renderTools();
                         renderNav();
@@ -317,7 +326,7 @@
                         if (e.target.closest('.card-add-new')) { e.preventDefault(); e.stopPropagation(); openItemEdit('', cat.id); }
                     });
 
-                    // 【优化 4】使用 DocumentFragment 批量渲染 DOM
+                    // 使用 DocumentFragment 批量渲染 DOM
                     const fragment = document.createDocumentFragment();
                     const catItems = appData.items.filter(i => i.catId === cat.id && (isAdmin || !i.hidden));
                     
@@ -326,7 +335,7 @@
                         card.className = 'card' + (item.hidden ? ' hidden-item' : '');
                         card.setAttribute('data-id', escapeHTML(item.id)); 
                         
-                        // 【优化 5】智能容错，图片加载失败时使用全局 getRandomEmoji() 替换为 Emoji
+                        // 智能容错，图片加载失败时使用全局 getRandomEmoji() 替换为 Emoji
                         let fallbackAttr = `onerror="this.outerHTML='<span class=\\'emoji-icon\\'>'+window.getRandomEmoji()+'</span>';"`;
                         
                         const safeIcon = escapeHTML(item.icon);
@@ -502,8 +511,32 @@
             const deleteObj = (type, id) => { if(confirm('确定删除？')) { const idx = appData[type].findIndex(o => o.id === id); if(idx > -1) appData[type].splice(idx, 1); renderNav(); if(type === 'categories') manageCats(); saveAll(false); } };
             
             // ================= 接口请求 =================
-            const doLogin = async () => { sysToken = document.getElementById('auth-input').value; localStorage.setItem('nav_token', sysToken); document.getElementById('auth-overlay').style.display = 'none'; await init(); if(!isAdmin) alert('验证失败'); };
-            const doLogout = () => { localStorage.removeItem('nav_token'); sysToken = ''; isAdmin = false; init(); };
+            // 加入 forceRender(true) 以强制刷新登录 UI
+            const doLogin = async () => { 
+                sysToken = document.getElementById('auth-input').value; 
+                localStorage.setItem('nav_token', sysToken); 
+                document.getElementById('auth-overlay').style.display = 'none'; 
+                await init(true); 
+                if(!isAdmin) {
+                    showToast("验证失败，Token 不正确", "#e74c3c");
+                    localStorage.removeItem('nav_token');
+                    sysToken = '';
+                    document.getElementById('auth-input').value = '';
+                } else {
+                    showToast("已进入管理模式");
+                }
+            };
+
+            // 登出时直接清空管理数据并强制更新缓存和 UI
+            const doLogout = () => { 
+                localStorage.removeItem('nav_token'); 
+                sysToken = ''; 
+                isAdmin = false; 
+                appData.isAdmin = false;
+                localStorage.setItem('nav_app_data', JSON.stringify(appData));
+                showToast("已退出管理模式", "#3498db");
+                init(true); 
+            };
             
             const saveAll = async (silent = false) => {
                 const dataToSave = { ...appData }; delete dataToSave.isAdmin; delete dataToSave.bgUrl;
@@ -511,8 +544,8 @@
                 try {
                     const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
                     if(res.ok && !silent) showToast("保存成功！"); 
-                    else if (!res.ok && !silent) showToast("保存失败，权限不足");
-                } catch (error) { if(!silent) showToast("网络错误，配置仅保存在本地"); }
+                    else if (!res.ok && !silent) showToast("保存失败，权限不足", "#e74c3c");
+                } catch (error) { if(!silent) showToast("网络错误，配置仅保存在本地", "#e67e22"); }
             };
 
             const importConfig = (event) => {
