@@ -65,7 +65,7 @@ const defaultData = {
     { id: "c09", catId: "c3", title: "医工直播接口", url: "http://iptv.cqshushu.com/jiekou.php",  icon: "🍄", hidden: false },
     { id: "c10", catId: "c3", title: "恩山论坛", url: "https://www.right.com.cn/FORUM/forum.php",  icon: "https://favicon.im/www.right.com.cn", hidden: false }, 
     { id: "c11", catId: "c3", title: "Emoji表情", url: "https://www.iamwawa.cn/emoji.html",  icon: "https://favicon.im/www.iamwawa.cn", hidden: false },
-    { id: "c12", catId: "c3", title: "老张的EPG", url: "https://epg.51zmt.top:8001/",  icon: "https://icons.duckduckgo.com/ip3/epg.51zmt.top.ico", hidden: false },
+    { id: "c12", catId: "c3", title: "老张的EPG", url: "https://epg.51zmt.top:8001/",  icon: "https://favicon.im/epg.51zmt.top:8001", hidden: false },
 
     { id: "d01", catId: "c4", title: "代理订阅", url: "https://sub.880824.xyz/880824",  icon: "🌍", hidden: false },
     { id: "d02", catId: "c4", title: "小草", url: "https://t66y.com/thread0806.php?fid=7",  icon: "https://favicon.im/t66y.com", hidden: false },
@@ -85,8 +85,8 @@ const defaultData = {
     { id: "d16", catId: "c4", title: "小鱼儿系统", url: "https://www.yrxitong.com/",  icon: "https://icons.duckduckgo.com/ip3/www.yrxitong.com.ico", hidden: false },
     { id: "d17", catId: "c4", title: "肥羊订阅转换", url: "https://suburl.v1.mk/",  icon: "https://icons.duckduckgo.com/ip3/suburl.v1.mk.ico", hidden: false },
 
-    { id: "e01", catId: "c5", title: "野火论坛", url: "https://www.proewildfire.cn/index.php",  icon: "https://icons.duckduckgo.com/ip3/www.proewildfire.cn.ico", hidden: false },
-    { id: "e02", catId: "c5", title: "Solidworker论坛", url: "https://www.swbbsc.com/",  icon: "https://icons.duckduckgo.com/ip3/www.swbbsc.com.ico", hidden: false },
+    { id: "e01", catId: "c5", title: "野火论坛", url: "https://www.proewildfire.cn/index.php",  icon: "https://favicon.im/www.proewildfire.cn", hidden: false },
+    { id: "e02", catId: "c5", title: "Solidworker论坛", url: "https://www.swbbsc.com/",  icon: "https://favicon.im/www.swbbsc.com", hidden: false },
     { id: "e03", catId: "c5", title: "Solidworker台湾论坛", url: "https://www.solidworks.org.tw/forum.php",  icon: "https://icons.duckduckgo.com/ip3/www.solidworks.org.tw.ico", hidden: false },
     { id: "e04", catId: "c5", title: "我要自学网", url: "https://www.51zxw.net/list.aspx?cid=37",  icon: "https://icons.duckduckgo.com/ip3/www.51zxw.net.ico", hidden: false },
     { id: "e05", catId: "c5", title: "3D下载", url: "https://camst.partcommunity.com/3d-cad-models/",  icon: "https://icons.duckduckgo.com/ip3/camst.partcommunity.com.ico", hidden: false },
@@ -191,4 +191,5 @@ export async function onRequest(context) {
     return new Response(JSON.stringify({ error: "SERVER_ERROR", message: err.toString() }), { status: 500, headers });
   }
 }
+
 
