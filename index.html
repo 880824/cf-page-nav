@@ -67,8 +67,10 @@
         .preview-container { width: 40px; height: 40px; background: #282828; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px; border-radius: 8px; margin-left: 8px; }
         .preview-container img { width: 24px; height: 24px; object-fit: contain; }
         
-        #toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.9); color: white; padding: 20px 40px; border-radius: 15px; border: 1px solid var(--glass-border); z-index: 3000; display: none; text-align: center; }
-        #toast.show { display: block; }
+        #toast { position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%); background: #27ae60; color: white; padding: 15px 35px; border-radius: 10px; border: 1px solid var(--glass-border); z-index: 3000; display: none; text-align: center; font-weight: bold; font-size: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: opacity 0.3s; }
+        #toast.show { display: block; animation: popIn 0.3s ease-out forwards; }
+        @keyframes popIn { 0% { opacity: 0; transform: translate(-50%, -60%); } 100% { opacity: 1; transform: translate(-50%, -50%); } }
+
         .footer-info { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.6); font-size: 12px; pointer-events: none; }
         
         .cat-item-row.sortable-ghost { background: var(--primary) !important; opacity: 0.5; }
@@ -76,7 +78,7 @@
     </style>
 </head>
 <body>
-    <div id="toast"></div>
+    <div id="toast">保存成功！</div>
     <div class="container">
         <div class="tab-container"><div id="tabs" class="tabs"></div><div id="cat-manage-area"></div></div>
         <div id="grid-container"></div>
@@ -172,6 +174,7 @@
                 document.title = "管理后台";
                 document.getElementById('admin-tools').innerHTML = `
                     <div class="fab-btn" onclick="window.doLogout()" style="background:#e74c3c; color:white; border:none">登出</div>
+                    <div class="fab-btn" onclick="window.saveAll(false)" style="background:var(--primary); color:white; border:none">保存</div>
                     <div class="fab-btn" onclick="document.getElementById('import-file').click()">导入</div>
                     <div class="fab-btn" onclick="window.exportConfig()">导出</div>
                     <div class="fab-btn" onclick="window.resetConfig()">默认</div>
@@ -261,7 +264,7 @@
                             const otherCatItems = appData.items.filter(i => i.catId !== cat.id); 
                             const sortedCurrentItems = newIdOrder.map(id => appData.items.find(i => i.id === id)); 
                             appData.items = [...otherCatItems, ...sortedCurrentItems]; 
-                            window.saveAll(true); 
+                            window.saveAll(true); // 拖拽排序保持静默后台保存即可
                         }
                     });
                 }
@@ -317,22 +320,16 @@
             if(url && url.startsWith('http')) { 
                 try { 
                     const domain = new URL(url).hostname; 
-                    
-                    // 两个接口地址
                     const icon1 = "https://favicon.im/" + domain; 
                     const icon2 = "https://icons.duckduckgo.com/ip3/" + domain + ".ico"; 
                     
-                    // 填充面板 1
                     document.getElementById('txt-fav1').value = icon1; 
                     document.getElementById('img-fav1').src = icon1;
-                    
-                    // 填充面板 2
                     document.getElementById('txt-fav2').value = icon2; 
                     document.getElementById('img-fav2').src = icon2;
                     
                     const currentIconVal = document.getElementById('f-icon').value;
                     
-                    // 自动选中逻辑
                     if(autoSelect && !currentIconVal) { 
                         document.getElementById('opt-fav1').checked = true; 
                         window.selectIcon(icon1); 
@@ -345,7 +342,6 @@
                     }
                 } catch(e) {} 
             } else {
-                // 清空面板
                 document.getElementById('txt-fav1').value = ""; document.getElementById('img-fav1').src = ""; document.getElementById('opt-fav1').checked = false;
                 document.getElementById('txt-fav2').value = ""; document.getElementById('img-fav2').src = ""; document.getElementById('opt-fav2').checked = false;
             }
@@ -370,14 +366,31 @@
                     ${appData.categories.map((c) => `<div class="cat-item-row" data-id="${window.escapeHTML(c.id)}" style="display:flex; gap:8px; margin-bottom:10px; align-items:center; background:#222; padding:8px; border-radius:10px;"><i class="ri-drag-move-fill drag-handle"></i><input value="${window.escapeHTML(c.icon)}" style="width:40px; text-align:center; padding:5px" onchange="window.updateCatData('${window.escapeHTML(c.id)}', 'icon', this.value)"><input value="${window.escapeHTML(c.name)}" style="flex:1; padding:5px" onchange="window.updateCatData('${window.escapeHTML(c.id)}', 'name', this.value)"><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.toggleHide('categories', '${window.escapeHTML(c.id)}')"><i class="ri-eye-${c.hidden?'off-':''}line"></i></button><button class="action-mini" onclick="event.preventDefault(); event.stopPropagation(); window.deleteObj('categories', '${window.escapeHTML(c.id)}')"><i class="ri-delete-bin-line"></i></button></div>`).join('')}
                 </div>
                 <button class="tab-btn active" style="width:100%; margin-top:15px" onclick="window.addCat()">+ 新增分类</button>`;
+            
             const catSortList = document.getElementById('cat-list-sort');
             new Sortable(catSortList, { animation: 150, handle: '.drag-handle', ghostClass: 'sortable-ghost', onEnd: () => { const newIdOrder = Array.from(catSortList.querySelectorAll('.cat-item-row')).map(el => el.getAttribute('data-id')); appData.categories = newIdOrder.map(id => appData.categories.find(c => c.id === id)); window.renderNav(); window.saveAll(true); } });
             document.getElementById('edit-modal').style.display = 'flex';
         };
 
-        window.changeCardWidth = function(val) { appData.settings.cardWidth = parseInt(val) || 160; document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px'); window.saveAll(true); };
-        window.updateCatData = function(id, field, val) { const cat = appData.categories.find(c => c.id === id); if(cat) cat[field] = val; window.renderNav(); window.saveAll(true); };
-        window.addCat = function() { appData.categories.push({ id: 'c'+Date.now(), name: '新分类', icon: '📁', hidden: false }); window.manageCats(); window.renderNav(); window.saveAll(true); };
+        window.changeCardWidth = function(val) { 
+            appData.settings.cardWidth = parseInt(val) || 160; 
+            document.documentElement.style.setProperty('--card-w', appData.settings.cardWidth + 'px'); 
+            // 移除这里的 auto-save，避免输入数字时狂刷后端接口，等点确认再保存
+        };
+        
+        window.updateCatData = function(id, field, val) { 
+            const cat = appData.categories.find(c => c.id === id); 
+            if(cat) cat[field] = val; 
+            window.renderNav(); 
+            // 同理，这里只改本地状态，等点下方确认再上传到后端
+        };
+        
+        window.addCat = function() { 
+            appData.categories.push({ id: 'c'+Date.now(), name: '新分类', icon: '📁', hidden: false }); 
+            window.manageCats(); 
+            window.renderNav(); 
+            // 同理
+        };
         
         window.confirmEdit = function() {
             if(window.editingType === 'items') {
@@ -385,17 +398,28 @@
                 if(window.editingId) { const idx = appData.items.findIndex(i => i.id === window.editingId); if(idx > -1) appData.items[idx] = { ...appData.items[idx], url, title, icon, catId }; } 
                 else { appData.items.push({ id: 'i'+Date.now(), url, title, icon, catId, hidden: false }); }
             }
-            window.renderNav(); window.closeModal(); window.saveAll(true); 
+            window.renderNav(); 
+            window.closeModal(); 
+            window.saveAll(false); // 强制反馈通知 (false = 不要静默)
         };
 
-        window.toggleHide = function(type, id) { const item = appData[type].find(o => o.id === id); if(item) item.hidden = !item.hidden; window.saveAll(true); window.renderNav(); if(type === 'categories') window.manageCats(); };
-        window.deleteObj = function(type, id) { if(confirm('确定删除？')) { const idx = appData[type].findIndex(o => o.id === id); if(idx > -1) appData[type].splice(idx, 1); window.renderNav(); if(type === 'categories') window.manageCats(); window.saveAll(true); } };
+        window.toggleHide = function(type, id) { const item = appData[type].find(o => o.id === id); if(item) item.hidden = !item.hidden; window.saveAll(false); window.renderNav(); if(type === 'categories') window.manageCats(); };
+        window.deleteObj = function(type, id) { if(confirm('确定删除？')) { const idx = appData[type].findIndex(o => o.id === id); if(idx > -1) appData[type].splice(idx, 1); window.renderNav(); if(type === 'categories') window.manageCats(); window.saveAll(false); } };
         
         window.saveAll = async function(silent = false) {
             const dataToSave = { ...appData }; delete dataToSave.isAdmin; delete dataToSave.bgUrl;
-            const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
-            if(res.ok && !silent) { const toast = document.getElementById('toast'); toast.innerHTML = '保存成功'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1500); } 
-            else if (!res.ok) { alert('保存失败，可能是权限不足'); }
+            try {
+                const res = await fetch('/api/config', { method: 'POST', headers: { 'Authorization': sysToken, 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave) });
+                if(res.ok && !silent) { 
+                    const toast = document.getElementById('toast'); 
+                    toast.innerText = '保存成功！'; 
+                    toast.classList.add('show'); 
+                    setTimeout(() => toast.classList.remove('show'), 2000); 
+                } 
+                else if (!res.ok) { alert('保存失败，可能是Token过期或权限不足'); }
+            } catch (error) {
+                alert('网络连接错误，保存失败');
+            }
         };
 
         window.importConfig = function(event) {
